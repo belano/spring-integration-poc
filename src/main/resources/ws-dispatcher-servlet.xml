@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://www.springframework.org/schema/p"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:sws="http://www.springframework.org/schema/web-services"
+	xmlns:int="http://www.springframework.org/schema/integration"
+	xmlns:int-ws="http://www.springframework.org/schema/integration/ws"
+	xmlns:int-stream="http://www.springframework.org/schema/integration/stream"	
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+	http://www.springframework.org/schema/beans/spring-beans.xsd
+	http://www.springframework.org/schema/web-services 
+	http://www.springframework.org/schema/web-services/web-services.xsd
+	http://www.springframework.org/schema/integration 
+	http://www.springframework.org/schema/integration/spring-integration-4.0.xsd
+	http://www.springframework.org/schema/integration/ws 
+	http://www.springframework.org/schema/integration/ws/spring-integration-ws-4.0.xsd
+	http://www.springframework.org/schema/integration/stream 
+	http://www.springframework.org/schema/integration/stream/spring-integration-stream.xsd
+	http://www.springframework.org/schema/context 
+	http://www.springframework.org/schema/context/spring-context.xsd">
+	
+	<bean id="connectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+        <property name="brokerURL" value="tcp://localhost:61616"/>
+    </bean>
+
+    <bean id="messageFactory" class="org.springframework.ws.soap.saaj.SaajSoapMessageFactory"/>
+
+    <bean class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+        <property name="connectionFactory" ref="connectionFactory"/>
+        <property name="destinationName" value="country-destination"/>
+        <property name="messageListener">
+            <bean class="org.springframework.ws.transport.jms.WebServiceMessageListener">
+                <property name="messageFactory" ref="messageFactory"/>
+                <property name="messageReceiver" ref="messageDispatcher"/>
+            </bean>
+        </property>
+    </bean>
+
+    <bean id="messageDispatcher" class="org.springframework.ws.soap.server.SoapMessageDispatcher">
+		<property name="endpointMappings">
+			<bean
+				class="org.springframework.ws.server.endpoint.mapping.PayloadRootAnnotationMethodEndpointMapping">
+				<property name="defaultEndpoint" ref="inboundGateway" />
+				<property name="interceptors">
+					<list>
+						<ref bean="auditInterceptor" />												
+					</list>
+				</property>				
+			</bean>
+		</property>		
+	</bean>
+	
+	<bean id="auditInterceptor" class="com.acme.ws.AuditInterceptor" />
+	
+	<!-- Spring Integration entry point -->
+	<int-ws:inbound-gateway id="inboundGateway"
+		request-channel="wsInboundChannel" reply-channel="wsOutboundChannel" marshaller="marshaller" />
+	
+	<bean id="marshaller" class="org.springframework.oxm.jaxb.Jaxb2Marshaller">	
+		<property name="contextPath" value="io.spring.guides.gs_producing_web_service" />
+	</bean>		
+		
+	<int:service-activator input-channel="wsInboundChannel" ref="countryEndpoint" />
+		
+    <int:logging-channel-adapter channel="loggingInboundChannel" logger-name="tapInbound"
+		level="TRACE" log-full-message="yes" />
+		
+	<int:logging-channel-adapter channel="loggingOutboundChannel" logger-name="tapOutbound"
+		level="TRACE" log-full-message="yes" />
+    
+    <int:channel id="loggingInboundChannel" />  
+    <int:channel id="wsInboundChannel">
+    	<int:interceptors>
+			<int:wire-tap channel="loggingInboundChannel" />
+		</int:interceptors>
+	</int:channel>
+    
+    <int:channel id="loggingOutboundChannel" />
+    <int:channel id="wsOutboundChannel">
+    	<int:interceptors>
+			<int:wire-tap channel="loggingOutboundChannel" />
+		</int:interceptors>
+	</int:channel>    
+    
+</beans>
